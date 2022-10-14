@@ -1,9 +1,9 @@
 #!/bin/bash
 DATA=/home/inspur/data/imagenet
 
-CUDA_VISIBLE_DEVICES=0,1,2,3 bash ./distributed_train.sh 4 $DATA \
+CUDA_VISIBLE_DEVICES=0,1,2,3 bash ./distributed_train.sh 4 44331 $DATA \
     --model mp_mobilenet_v2 \
-    -b 512 -j 7 \
+    -b 512 -j 4 \
     --sched cosine --epochs 300 \
     --decay-epochs 2.4 --decay-rate .973 \
     --opt lamb --opt-eps 1e-06 \

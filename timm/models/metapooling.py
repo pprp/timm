@@ -131,7 +131,8 @@ class ConvBNReLU(nn.Sequential):
                       stride,
                       padding,
                       groups=groups,
-                      bias=False), nn.BatchNorm2d(out_planes),
+                      bias=False), 
+            nn.BatchNorm2d(out_planes),
             nn.ReLU6(inplace=True))
 
 
@@ -316,6 +317,30 @@ def mp_mobilenet_v2(pretrained=False, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return MobileNetV2(**kwargs)
+
+@register_model
+def mp_mobilenet_v2_075(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNetV2 architecture from
+    `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
+
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return MobileNetV2(width_mult=0.75, **kwargs)
+
+@register_model
+def mp_mobilenet_v2_050(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNetV2 architecture from
+    `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
+
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return MobileNetV2(width_mult=0.5, **kwargs)
 
 
 def demo():
