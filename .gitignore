@@ -109,3 +109,5 @@ output/
 *.gz
 Untitled.ipynb
 Testing notebook.ipynb
+*.json
+.vscode/*
