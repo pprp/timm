@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import random 
 
 from .registry import register_model
 
@@ -13,6 +14,20 @@ class h_sigmoid(nn.Module):
 
     def forward(self, x):
         return self.relu(x + 3) / 6
+
+
+def generate_random_config(max_layer=17, max_choice=5) -> list:
+    """generate random config, every layer randomly selected one index 
+    # sampled sample:
+    # [0, 1, 3, 1, 2, 4, 3, 0, 2, 4, 0, 4, 1, 1, 1, 3, 3]
+    Args:
+        max_layer (int, optional): _description_. Defaults to 15.
+        max_choice (int, optional): _description_. Defaults to 5.
+    """
+    rand_cfg = []
+    for i in range(max_layer):
+        rand_cfg.append(random.choice(list(range(max_choice))))
+    return rand_cfg 
 
 
 class SpatialSeperablePooling(nn.Module):
@@ -130,7 +145,19 @@ class MetaPooling(nn.Module):
 
 
 class InvertedResidual(nn.Module):
-    def __init__(self, in_channels, out_channels, stride, expand_ratio, idx=6):
+    """_summary_
+
+        Args:
+            in_channels (_type_): _description_
+            out_channels (_type_): _description_
+            stride (_type_): _description_
+            expand_ratio (_type_): _description_
+            idx (int, optional): _description_. Defaults to 6.
+            choice_index (_type_, optional): _description_. Defaults to None.
+    """
+    def __init__(self, in_channels, out_channels, stride, expand_ratio, 
+                 idx=6, choice_index=None):
+        
         super(InvertedResidual, self).__init__()
         self.stride = stride
         assert stride in [1, 2]
@@ -153,14 +180,16 @@ class InvertedResidual(nn.Module):
             nn.BatchNorm2d(out_channels),
         ])
         self.conv = nn.Sequential(*layers)
-        self.meta = MetaPooling(
-            out_channels) if idx >= 6 else nn.Identity()
+        self.meta = MetaPooling(out_channels)
+        # self.meta = SpatialSeperablePooling(
+        #     out_channels) if idx >= 6 else nn.Identity()
+        self.choice_index = choice_index  
 
     def forward(self, x):
         if self.use_res_connect:
-            return x + self.meta(self.conv(x))
+            return x + self.meta(self.conv(x), self.choice_index)
         else:
-            return self.meta(self.conv(x))
+            return self.meta(self.conv(x), self.choice_index)
 
 
 class MobileNetV2(nn.Module):
@@ -169,25 +198,31 @@ class MobileNetV2(nn.Module):
                  width_mult=1.0,
                  inverted_residual_setting=None,
                  round_nearest=8,
+                 rand_cfg= [0, 1, 3, 1, 2, 4, 3, 0, 2, 4, 0, 4, 1, 1, 1, 3, 3],
                  **kwargs):
         """
         MobileNet V2 main class
 
         Args:
             num_classes (int): Number of classes
-            width_mult (float): Width multiplier - adjusts number of channels in each layer by this amount
+            width_mult (float): Width multiplier - adjusts number of channels 
+                in each layer by this amount
             inverted_residual_setting: Network structure
-            round_nearest (int): Round the number of channels in each layer to be a multiple of this number
+            round_nearest (int): Round the number of channels in each layer to
+                be a multiple of this number
             Set to 1 to turn off rounding
         """
         super(MobileNetV2, self).__init__()
         block = InvertedResidual
         input_channel = 32
         last_channel = 1280
+        
+        self.rand_cfg = rand_cfg 
 
         if inverted_residual_setting is None:
             inverted_residual_setting = [
                 # t, c, n, s
+                # expand ratio; channel; repeat times; stride 
                 [1, 16, 1, 1],
                 [6, 24, 2, 2],
                 [6, 32, 3, 2],
@@ -221,7 +256,8 @@ class MobileNetV2(nn.Module):
                           output_channel,
                           stride,
                           expand_ratio=t,
-                          idx=global_cnt))
+                          idx=global_cnt,
+                          choice_index=self.rand_cfg[global_cnt]))
                 input_channel = output_channel
                 global_cnt += 1
         # building last several layers
@@ -263,7 +299,7 @@ class MobileNetV2(nn.Module):
 
 
 @register_model
-def mp_mobilenet_v2(pretrained=False, **kwargs):
+def rand_mp_mobilenet_v2(pretrained=False, **kwargs):
     """
     Constructs a MobileNetV2 architecture from
     `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
@@ -272,11 +308,12 @@ def mp_mobilenet_v2(pretrained=False, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return MobileNetV2(**kwargs)
+    rand_cfg = [0, 1, 3, 1, 2, 4, 3, 0, 2, 4, 0, 4, 1, 1, 1, 3, 3]
+    return MobileNetV2(rand_cfg=rand_cfg, **kwargs)
 
 
 @register_model
-def mp_mobilenet_v2_075(pretrained=False, **kwargs):
+def global_mp_mobilenet_v2(pretrained=False, **kwargs):
     """
     Constructs a MobileNetV2 architecture from
     `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
@@ -285,11 +322,12 @@ def mp_mobilenet_v2_075(pretrained=False, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return MobileNetV2(width_mult=0.75, **kwargs)
+    rand_cfg = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    return MobileNetV2(rand_cfg=rand_cfg, **kwargs)
 
 
 @register_model
-def mp_mobilenet_v2_050(pretrained=False, **kwargs):
+def local_mp_mobilenet_v2(pretrained=False, **kwargs):
     """
     Constructs a MobileNetV2 architecture from
     `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
@@ -298,11 +336,13 @@ def mp_mobilenet_v2_050(pretrained=False, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return MobileNetV2(width_mult=0.5, **kwargs)
+    rand_cfg = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    return MobileNetV2(rand_cfg=rand_cfg, **kwargs)
+
 
 
 def demo():
-    net = mp_mobilenet_v2(num_classes=1000)
+    net = global_mp_mobilenet_v2(num_classes=1000)
     y = net(torch.randn(2, 3, 224, 224))
     print(y.size())
 

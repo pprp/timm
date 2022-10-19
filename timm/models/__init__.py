@@ -73,3 +73,4 @@ from .layers import is_scriptable, is_exportable, set_scriptable, set_exportable
 from .layers import set_fast_norm
 from .registry import register_model, model_entrypoint, list_models, is_model, list_modules, is_model_in_modules,\
     is_model_pretrained, get_pretrained_cfg, has_pretrained_cfg_key, is_pretrained_cfg_key, get_pretrained_cfg_value
+from .metapooling_ablation import rand_mp_mobilenet_v2, global_mp_mobilenet_v2, local_mp_mobilenet_v2
