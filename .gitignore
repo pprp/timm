@@ -111,3 +111,6 @@ Untitled.ipynb
 Testing notebook.ipynb
 *.json
 .vscode/*
+*.out
+global_ablation_study/ 
+random_ablation_study/

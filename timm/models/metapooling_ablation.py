@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import random 
 
-from .registry import register_model
+from timm.models.registry import register_model
 
 __all__ = ['mp_mobilenet_v2']
 
@@ -183,7 +183,7 @@ class InvertedResidual(nn.Module):
         self.meta = MetaPooling(out_channels)
         # self.meta = SpatialSeperablePooling(
         #     out_channels) if idx >= 6 else nn.Identity()
-        self.choice_index = choice_index  
+        self.choice_index = choice_index
 
     def forward(self, x):
         if self.use_res_connect:
@@ -340,11 +340,14 @@ def local_mp_mobilenet_v2(pretrained=False, **kwargs):
     return MobileNetV2(rand_cfg=rand_cfg, **kwargs)
 
 
-
 def demo():
     net = global_mp_mobilenet_v2(num_classes=1000)
-    y = net(torch.randn(2, 3, 224, 224))
-    print(y.size())
+    label = torch.empty(2, dtype=torch.long).random_(5)
+    out = net(torch.randn(2, 3, 224, 224))
+    import torch.nn as nn
+    criterion = nn.CrossEntropyLoss()
+    loss = criterion(out, label)
+    loss.backward()
 
 
 if __name__ == '__main__':
