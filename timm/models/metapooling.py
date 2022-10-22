@@ -153,7 +153,7 @@ class InvertedResidual(nn.Module):
             nn.BatchNorm2d(out_channels),
         ])
         self.conv = nn.Sequential(*layers)
-        self.meta = MetaPooling(
+        self.meta = SpatialSeperablePooling(
             out_channels) if idx >= 6 else nn.Identity()
 
     def forward(self, x):

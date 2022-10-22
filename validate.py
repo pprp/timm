@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.parallel
 from collections import OrderedDict
 from contextlib import suppress
+import ttach as tta 
 
 from timm.models import create_model, apply_test_time_pool, load_checkpoint, is_model, list_models, set_fast_norm
 from timm.data import create_dataset, create_loader, resolve_data_config, RealLabelsImagenet
@@ -189,6 +190,8 @@ def validate(args):
     if args.aot_autograd:
         assert has_functorch, "functorch is needed for --aot-autograd"
         model = memory_efficient_fusion(model)
+
+    model = tta.ClassificationTTAWrapper(model, tta.aliases.ten_crop_transform(224,224))
 
     model = model.cuda()
     if args.apex_amp:
