@@ -19,7 +19,7 @@ DATA=/home/inspur/data/imagenet
 #     --seed 666 \
 #     --train-interpolation bicubic
 
-CUDA_VISIBLE_DEVICES=0,1,2,3 bash ./distributed_train.sh 4 47331 $DATA \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 bash ./distributed_train.sh 8 47331 $DATA \
     --model mp_mobilenet_v2_075 \
     -b 512 -j 4 \
     --sched cosine --epochs 240 \
@@ -29,9 +29,10 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 bash ./distributed_train.sh 4 47331 $DATA \
     --drop 0.1 --drop-path 0.08 \
     --aa rand-m9-mstd0.5 --remode pixel \
     --reprob 0.2 --amp \
-    --lr 0.005 --lr-noise 0.42 0.9 \
+    --lr 0.01 --lr-noise 0.42 0.9 \
     --interpolation bicubic --min-lr 1e-5 --mixup 0.15 \
     --num-classes 1000 \
     --output metapooling_with_procedureB \
     --seed 666 \
+    --resume /home/inspur/project/timm/metapooling_with_procedureB/20221021-151607-mp_mobilenet_v2_075-224/last.pth.tar \
     --train-interpolation bicubic
