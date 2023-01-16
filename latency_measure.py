@@ -1,8 +1,8 @@
 import torch 
 import numpy as np 
-# from timm.models.mobilenetv2 import mobilenet_v2
+from timm.models.mobilenetv2 import mobilenet_v2
 from ptflops import get_model_complexity_info
-from torchvision.models import mobilenet_v2
+# from torchvision.models import mobilenet_v2
 
 
 model = mobilenet_v2()
@@ -34,7 +34,7 @@ mean_syn = np.sum(timings) / repetitions
 std_syn = np.std(timings)
 print("latency:", mean_syn, "+-", std_syn)
 
-flops_count, param_count = get_model_complexity_info(
-            model, (3, 224, 224), print_per_layer_stat=False)
+flops_count, param_count = get_model_complexity_info(model, (3, 224, 224), print_per_layer_stat=False)
 
-print(f"Flops: {flops_count} \t Param: {param_count}")
+print(f"Flops: {flops_count}")
+print(f"Param: {param_count}")

@@ -1,10 +1,16 @@
-import torch
 from torch import nn
+import torch 
+from torchvision.models.utils import load_state_dict_from_url
+from timm.models.layers.blurpool import BlurPool
+from timm.models.layers.guass_pool import GaussianPooling2d
 
-from .registry import register_model
 
-__all__ = ['mobilenet_v2']
+__all__ = ['MobileNetV2', 'mobilenet_v2']
 
+
+model_urls = {
+    'mobilenet_v2': 'https://download.pytorch.org/models/mobilenet_v2-b0353104.pth',
+}
 
 class h_sigmoid(nn.Module):
     def __init__(self, inplace=True):
@@ -14,6 +20,14 @@ class h_sigmoid(nn.Module):
     def forward(self, x):
         return self.relu(x + 3) / 6
 
+
+class h_swish(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_swish, self).__init__()
+        self.sigmoid = h_sigmoid(inplace=inplace)
+
+    def forward(self, x):
+        return x * self.sigmoid(x)
 
 class SpatialSeperablePooling(nn.Module):
     """Spatial Seperable Pooling operation."""
@@ -60,7 +74,6 @@ class SpatialSeperablePooling(nn.Module):
 
         return out
 
-
 def _make_divisible(v, divisor, min_value=None):
     """
     This function is taken from the original tf repo.
@@ -82,79 +95,46 @@ def _make_divisible(v, divisor, min_value=None):
 
 
 class ConvBNReLU(nn.Sequential):
-    def __init__(self,
-                 in_planes,
-                 out_planes,
-                 kernel_size=3,
-                 stride=1,
-                 groups=1):
+    def __init__(self, in_planes, out_planes, kernel_size=3, stride=1, groups=1, norm_layer=None):
         padding = (kernel_size - 1) // 2
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
         super(ConvBNReLU, self).__init__(
-            nn.Conv2d(in_planes,
-                      out_planes,
-                      kernel_size,
-                      stride,
-                      padding,
-                      groups=groups,
-                      bias=False),
-            nn.BatchNorm2d(out_planes),
-            nn.ReLU6(inplace=True))
-
-
-class h_swish(nn.Module):
-    def __init__(self, inplace=True):
-        super(h_swish, self).__init__()
-        self.sigmoid = h_sigmoid(inplace=inplace)
-
-    def forward(self, x):
-        return x * self.sigmoid(x)
-
-
-class MetaPooling(nn.Module):
-    def __init__(self, in_channels=128):
-        super().__init__()
-        self.candidates = nn.ModuleList()
-        self.candidates.append(SpatialSeperablePooling(in_channels))
-        self.candidates.append(nn.AvgPool2d(3, stride=1, padding=1))
-        self.candidates.append(nn.AvgPool2d(5, stride=1, padding=2))
-        self.candidates.append(nn.AvgPool2d(7, stride=1, padding=3))
-        self.candidates.append(nn.Identity())
-        self.bn = nn.BatchNorm2d(in_channels)
-        self.act = h_swish()
-
-    def forward(self, x, index=0):
-        out = self.candidates[index](x)
-        out = self.bn(out)
-        out = self.act(out)
-        return out
+            nn.Conv2d(in_planes, out_planes, kernel_size, stride, padding, groups=groups, bias=False),
+            norm_layer(out_planes),
+            nn.ReLU6(inplace=True)
+        )
 
 
 class InvertedResidual(nn.Module):
-    def __init__(self, in_channels, out_channels, stride, expand_ratio, idx=6):
+    def __init__(self, inp, oup, stride, expand_ratio, norm_layer=None):
         super(InvertedResidual, self).__init__()
         self.stride = stride
         assert stride in [1, 2]
 
-        hidden_dim = int(round(in_channels * expand_ratio))
-        self.use_res_connect = self.stride == 1 and in_channels == out_channels
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+
+        hidden_dim = int(round(inp * expand_ratio))
+        self.use_res_connect = self.stride == 1 and inp == oup
 
         layers = []
         if expand_ratio != 1:
             # pw
-            layers.append(ConvBNReLU(in_channels, hidden_dim, kernel_size=1))
+            layers.append(ConvBNReLU(inp, hidden_dim, kernel_size=1, norm_layer=norm_layer))
         layers.extend([
             # dw
-            ConvBNReLU(hidden_dim,
-                       hidden_dim,
-                       stride=stride,
-                       groups=hidden_dim),
+            ConvBNReLU(hidden_dim, hidden_dim, stride=stride, groups=hidden_dim, norm_layer=norm_layer),
             # pw-linear
-            nn.Conv2d(hidden_dim, out_channels, 1, 1, 0, bias=False),
-            nn.BatchNorm2d(out_channels),
+            nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
+            norm_layer(oup),
         ])
         self.conv = nn.Sequential(*layers)
-        self.meta = nn.Identity()
-        # SpatialSeperablePooling(out_channels) if idx >= 6 else nn.Identity()
+        self.meta = GaussianPooling2d(num_features=oup, kernel_size=3, stride=1, padding=1)
+        # BlurPool(oup, filt_size=4, stride=1)
+        # SpatialSeperablePooling(oup)
+        # nn.AvgPool2d(3, 1, 1)
+        # nn.Identity()
 
     def forward(self, x):
         if self.use_res_connect:
@@ -169,19 +149,27 @@ class MobileNetV2(nn.Module):
                  width_mult=1.0,
                  inverted_residual_setting=None,
                  round_nearest=8,
-                 **kwargs):
+                 block=None,
+                 norm_layer=None):
         """
         MobileNet V2 main class
-
         Args:
             num_classes (int): Number of classes
             width_mult (float): Width multiplier - adjusts number of channels in each layer by this amount
             inverted_residual_setting: Network structure
             round_nearest (int): Round the number of channels in each layer to be a multiple of this number
             Set to 1 to turn off rounding
+            block: Module specifying inverted residual building block for mobilenet
+            norm_layer: Module specifying the normalization layer to use
         """
         super(MobileNetV2, self).__init__()
-        block = InvertedResidual
+
+        if block is None:
+            block = InvertedResidual
+
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+
         input_channel = 32
         last_channel = 1280
 
@@ -198,45 +186,31 @@ class MobileNetV2(nn.Module):
             ]
 
         # only check the first element, assuming user knows t,c,n,s are required
-        if len(inverted_residual_setting) == 0 or len(
-                inverted_residual_setting[0]) != 4:
-            raise ValueError('inverted_residual_setting should be non-empty '
-                             'or a 4-element list, got {}'.format(
-                                 inverted_residual_setting))
+        if len(inverted_residual_setting) == 0 or len(inverted_residual_setting[0]) != 4:
+            raise ValueError("inverted_residual_setting should be non-empty "
+                             "or a 4-element list, got {}".format(inverted_residual_setting))
 
         # building first layer
-        input_channel = _make_divisible(input_channel * width_mult,
-                                        round_nearest)
-        self.last_channel = _make_divisible(
-            last_channel * max(1.0, width_mult), round_nearest)
-        features = [ConvBNReLU(3, input_channel, stride=2)]
+        input_channel = _make_divisible(input_channel * width_mult, round_nearest)
+        self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
+        features = [ConvBNReLU(3, input_channel, stride=2, norm_layer=norm_layer)]
         # building inverted residual blocks
-        global_cnt = 0
         for t, c, n, s in inverted_residual_setting:
             output_channel = _make_divisible(c * width_mult, round_nearest)
             for i in range(n):
                 stride = s if i == 0 else 1
-                features.append(
-                    block(input_channel,
-                          output_channel,
-                          stride,
-                          expand_ratio=t,
-                          idx=global_cnt))
+                features.append(block(input_channel, output_channel, stride, expand_ratio=t, norm_layer=norm_layer))
                 input_channel = output_channel
-                global_cnt += 1
         # building last several layers
-
-        features.append(
-            ConvBNReLU(input_channel, self.last_channel, kernel_size=1))
+        features.append(ConvBNReLU(input_channel, self.last_channel, kernel_size=1, norm_layer=norm_layer))
         # make it nn.Sequential
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.features = nn.Sequential(*features)
-        self.hwish = h_swish()
-        self.fc = nn.Conv2d(self.last_channel, 1280, 1, 1, 0)
-        self.dropout = nn.Dropout(0.2)
 
         # building classifier
-        self.classifier = nn.Linear(1280, num_classes)
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.2),
+            nn.Linear(self.last_channel, num_classes),
+        )
 
         # weight initialization
         for m in self.modules():
@@ -244,68 +218,37 @@ class MobileNetV2(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm2d):
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
             elif isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, 0, 0.01)
                 nn.init.zeros_(m.bias)
 
-    def forward(self, x):
+    def _forward_impl(self, x):
+        # This exists since TorchScript doesn't support inheritance, so the superclass method
+        # (this one) needs to have a name other than `forward` that can be accessed in a subclass
         x = self.features(x)
-        x = self.avgpool(x)
-        x = self.fc(x)
-        x = self.hwish(x)
-        x = self.dropout(x)
-        x = x.view(x.size(0), -1)
+        # Cannot use "squeeze" as batch-size can be 1 => must use reshape with x.shape[0]
+        x = nn.functional.adaptive_avg_pool2d(x, 1).reshape(x.shape[0], -1)
         x = self.classifier(x)
         return x
 
+    def forward(self, x):
+        return self._forward_impl(x)
 
-@register_model
-def mobilenet_v2(pretrained=False, **kwargs):
+
+def mobilenet_v2(pretrained=False, progress=True, **kwargs):
     """
     Constructs a MobileNetV2 architecture from
     `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
-
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return MobileNetV2(**kwargs)
-
-
-@register_model
-def mobilenet_v2_075(pretrained=False, **kwargs):
-    """
-    Constructs a MobileNetV2 architecture from
-    `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
-
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-        progress (bool): If True, displays a progress bar of the download to stderr
-    """
-    return MobileNetV2(width_mult=0.75, **kwargs)
-
-
-@register_model
-def mobilenet_v2_050(pretrained=False, **kwargs):
-    """
-    Constructs a MobileNetV2 architecture from
-    `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
-
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-        progress (bool): If True, displays a progress bar of the download to stderr
-    """
-    return MobileNetV2(width_mult=0.5, **kwargs)
-
-
-def demo():
-    net = mobilenet_v2(num_classes=1000)
-    y = net(torch.randn(2, 3, 224, 224))
-    print(y.size())
-
-
-if __name__ == '__main__':
-    demo()
+    model = MobileNetV2(**kwargs)
+    if pretrained:
+        state_dict = load_state_dict_from_url(model_urls['mobilenet_v2'],
+                                              progress=progress)
+        model.load_state_dict(state_dict)
+    return model
