@@ -325,6 +325,19 @@ def global_mp_mobilenet_v2(pretrained=False, **kwargs):
     rand_cfg = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     return MobileNetV2(rand_cfg=rand_cfg, **kwargs)
 
+@register_model 
+def exclude_local_mp_mobilenet_v2(pretrained=False, **kwargs):
+    """
+    Constructs a MobileNetV2 architecture from
+    `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
+
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    rand_cfg = [4, 4, 0, 4, 4, 0, 0, 4, 0, 4, 0, 0, 4, 0, 0, 0, 0]
+    return MobileNetV2(rand_cfg=rand_cfg, **kwargs)
+
 
 @register_model
 def local_mp_mobilenet_v2(pretrained=False, **kwargs):
