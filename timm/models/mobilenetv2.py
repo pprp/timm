@@ -3,6 +3,7 @@ import torch
 from torchvision.models.utils import load_state_dict_from_url
 from timm.models.layers.blurpool import BlurPool
 from timm.models.layers.guass_pool import GaussianPooling2d
+from timm.models.layers.gated_pool import GatedPool_c
 
 
 __all__ = ['MobileNetV2', 'mobilenet_v2']
@@ -130,7 +131,8 @@ class InvertedResidual(nn.Module):
             norm_layer(oup),
         ])
         self.conv = nn.Sequential(*layers)
-        self.meta = GaussianPooling2d(num_features=oup, kernel_size=3, stride=1, padding=1)
+        self.meta = GatedPool_c(in_channels=oup, kernel_size=1, stride=1, padding=0, dilation=1)
+        # GaussianPooling2d(num_features=oup, kernel_size=3, stride=1, padding=1)
         # BlurPool(oup, filt_size=4, stride=1)
         # SpatialSeperablePooling(oup)
         # nn.AvgPool2d(3, 1, 1)
